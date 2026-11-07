@@ -13,6 +13,9 @@ client = OpenAI(
 
 messages = []
 
+# Max limit of round of tools called for user's one question
+MAX_STEPS = 5
+
 messages.append(
     {
         "role" : "system",
@@ -33,23 +36,38 @@ while True:
         }
     )
 
-    response = client.chat.completions.create(
-        model=os.getenv("MODEL"),
-        messages=messages,
-        tools=TOOLS
-    )
+    # Chained tool call (Also called -> Agent Loop)
 
-    msg = response.choices[0].message
-    if msg.tool_calls:
+    # Chained / Sequential tool calling can run indefintely -> fixed here by for loop with range()
+    # First wrong answer will cascade
+    # small models struggle with multi-step planning, can also call tools in the wrong order
+    # Since LLM is non deterministic, it becomes difficult to debug
+    # Prompt injection is a threat, installed by external users (malicious)
+
+    for step in range(MAX_STEPS):
+        response = client.chat.completions.create(
+                model=os.getenv("MODEL"),
+                messages=messages,
+                tools=TOOLS
+            )
+
+        msg = response.choices[0].message
+
+        if not msg.tool_calls:
+            break
+        
         messages.append(msg)
 
         for tool_call in msg.tool_calls:
             func_name = tool_call.function.name
-            func_args = json.loads(tool_call.function.arguments or "{}")
+            func_args = {}
 
-            fn = FUNCTION_NAME_TO_FUNCTION_DICTIONARY[func_name]
-
-            result = fn(**func_args)
+            try : 
+                func_args = json.loads(tool_call.function.arguments or "{}")
+                fn = FUNCTION_NAME_TO_FUNCTION_DICTIONARY[func_name]
+                result = fn(**func_args)
+            except Exception as e:
+                result = f"Error while running {func_name} : {e}"
 
             messages.append({
                 "role" : "tool",
@@ -57,13 +75,15 @@ while True:
                 "content" : str(result)
             })
 
-        # 2nd call : Now Pass it on to LLM again -
-        response = client.chat.completions.create(
-            model=os.getenv("MODEL"),
-            messages=messages,
-        )
-
-        msg = response.choices[0].message
+    # else block in python for a for loop runs only when loop does not end normally
+    else :
+        fallback = "Sorry, I could not finish this within step limit."
+        messages.append({
+            "role" : "assistant",
+            "content" : fallback
+        })
+        print("Qwen3 : ", fallback)
+        continue
 
     messages.append(
         {
