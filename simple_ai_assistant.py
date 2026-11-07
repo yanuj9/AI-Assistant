@@ -1,5 +1,6 @@
 # standard library imports
 import os
+from types import SimpleNamespace
 
 # Third-party imports
 from openai import OpenAI
@@ -41,9 +42,84 @@ MAX_STEPS = 5
 messages.append(
     {
         "role" : "system",
-        "content" : "Act like a very humble agent but and respond always under 40 words."
+        "content" : "You're a general-purpose assistant. Answer questions using your knowledge. Use the provided tools only when they help with the request. The tools do not limit what you can answer. If you don't know something, say so. Keep your answers in 200 words"
     }
 )
+
+def stream_chat(history):
+    stream = client.chat.completions.create(
+        model=os.getenv("MODEL"),
+        messages=history,
+        tools=TOOLS,
+        stream=True
+    )
+
+    full_response = ""
+    calls = {}
+    icon_printed = False
+
+    try:
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+
+            delta = chunk.choices[0].delta
+
+            # Content Streaming
+            if delta.content:
+                if not icon_printed:
+                    print("🤖 Qwen3 : ", end = "", flush=True)
+                    icon_printed = True
+                print(delta.content, end="", flush=True)
+                full_response += delta.content
+
+            # Tool calling
+            for tc in (delta.tool_calls or []):
+                obj = calls.setdefault(
+                    tc.index,
+                    SimpleNamespace(id = None, function=SimpleNamespace(name="", arguments="")),
+                )
+
+                if tc.id:
+                    obj.id = tc.id
+                if tc.function and tc.function.name:
+                    obj.function.name += tc.function.name
+                if tc.function and tc.function.arguments:
+                    obj.function.arguments += tc.function.arguments
+
+    except KeyboardInterrupt:
+        print("\nStopped by You, exiting the chat.")
+        calls = {}
+        
+
+    if icon_printed:
+        print()
+
+    call_list = []
+
+    for key in sorted(calls):
+        call_list.append(calls[key])
+
+    return full_response, call_list
+
+def build_tool_calls_payload(tool_calls):
+    """ converts out collected tools calls in the dict format as API expects """
+
+    payload = []
+
+    for tool_call in tool_calls:
+        tool_call_dict = {
+            "id" : tool_call.id,
+            "type" : "function",
+            "function" : {
+                "name" : tool_call.function.name,
+                "arguments" : tool_call.function.arguments,
+            },
+        }
+        payload.append(tool_call_dict)
+
+    return payload
+
 
 while True:
     user_input = input("\n👦🏻 Anuj : ")
@@ -67,22 +143,21 @@ while True:
     # Prompt injection is a threat, installed by external users (malicious)
 
     for step in range(MAX_STEPS):
-        response = client.chat.completions.create(
-                model=os.getenv("MODEL"),
-                messages=messages,
-                tools=TOOLS
-            )
 
-        msg = response.choices[0].message
+        full_response, tool_calls = stream_chat(messages)
 
-        if not msg.tool_calls:
+        if not tool_calls:
             break
 
-        log(f"Step {step + 1}: model requested {len(msg.tool_calls)} tool calls")
+        log(f"Step {step + 1}: model requested {len(tool_calls)} tool calls")
         
-        messages.append(msg)
+        messages.append({
+            "role" : "assistant",
+            "content" : full_response,
+            "tool_calls" : build_tool_calls_payload(tool_calls)
+        })
 
-        for tool_call in msg.tool_calls:
+        for tool_call in tool_calls:
             result = run_tool(tool_call)
 
             messages.append({
@@ -100,12 +175,3 @@ while True:
         })
         print("🤖 Qwen3 : ", fallback)
         continue
-
-    messages.append(
-        {
-            "role" : "assistant",
-            "content" : msg.content,
-        }
-    )
-
-    print("🤖 Qwen3 : ", (msg.content or ""))
