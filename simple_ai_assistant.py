@@ -1,8 +1,21 @@
+# standard library imports
+import os
+
+# Third-party imports
 from openai import OpenAI
 from dotenv import load_dotenv
-from tools import TOOLS, FUNCTION_NAME_TO_FUNCTION_DICTIONARY
-import os
-import json
+
+# Local imports
+from Utilities.utilities import log
+from tools import TOOLS, run_tool
+
+
+"""
+Whatever we provide to the model is a Hint not a guarantee.
+Small models may still ignore instructions.
+So make it a habit to not rely on model totally. (graceful Exception handling)
+
+"""
 
 load_dotenv() # by default looks for .env file and loads all of these in environment variables
 
@@ -24,7 +37,7 @@ messages.append(
 )
 
 while True:
-    user_input = input("\nAnuj : ")
+    user_input = input("\n👦🏻 Anuj : ")
 
     if user_input.lower() in ["exit", "quit", "bye", "goodbye"]:
         break
@@ -55,19 +68,13 @@ while True:
 
         if not msg.tool_calls:
             break
+
+        log(f"Step {step + 1}: model requested {len(msg.tool_calls)} tool calls")
         
         messages.append(msg)
 
         for tool_call in msg.tool_calls:
-            func_name = tool_call.function.name
-            func_args = {}
-
-            try : 
-                func_args = json.loads(tool_call.function.arguments or "{}")
-                fn = FUNCTION_NAME_TO_FUNCTION_DICTIONARY[func_name]
-                result = fn(**func_args)
-            except Exception as e:
-                result = f"Error while running {func_name} : {e}"
+            result = run_tool(tool_call)
 
             messages.append({
                 "role" : "tool",
@@ -82,7 +89,7 @@ while True:
             "role" : "assistant",
             "content" : fallback
         })
-        print("Qwen3 : ", fallback)
+        print("🤖 Qwen3 : ", fallback)
         continue
 
     messages.append(
@@ -92,4 +99,4 @@ while True:
         }
     )
 
-    print("Qwen3 : ", msg.content)
+    print("🤖 Qwen3 : ", (msg.content or ""))

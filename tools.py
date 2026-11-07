@@ -1,5 +1,8 @@
+import json
 from datetime import datetime
 import requests
+
+from Utilities.utilities import log
 
 def get_current_time():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -10,6 +13,7 @@ def get_user_city():
 def get_city_weather(city):
     url = f"https://wttr.in/{city}?format=3"
     response = requests.get(url=url, timeout=10)
+    response.raise_for_status() # raises HTTPerror if something went wrong
     return response.text
 
 # Tools = [{}, {}, ..., {}]
@@ -43,7 +47,8 @@ TOOLS = [
                         "type" : "string",
                         "description" : "City for which the weather is asked"
                     }
-                }
+                },
+                "required" : ["city"]
             }
         }
     },
@@ -65,3 +70,19 @@ FUNCTION_NAME_TO_FUNCTION_DICTIONARY = {
     "get_city_weather" : get_city_weather,
     "get_user_city" : get_user_city
 }
+
+def run_tool(tool_call):
+    func_name = tool_call.function.name
+    func_args = {}
+    
+    try : 
+        func_args = json.loads(tool_call.function.arguments or "{}")
+        log(f"🔧{func_name}({func_args})")
+        fn = FUNCTION_NAME_TO_FUNCTION_DICTIONARY[func_name]
+        result = fn(**func_args)
+    except Exception as e:
+        result = f"Error while running {func_name} : {e}"
+    
+    log(f"   ↳{result}")
+
+    return str(result)
