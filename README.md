@@ -106,3 +106,8 @@ The language model runs locally, but weather lookups are not offline.
 - **Model not found:** Run `ollama pull qwen3:8b`, or update `MODEL` to exactly match the tag reported by `ollama list`.
 - **Python import error:** Activate the virtual environment and install the dependencies listed above.
 - **Slow responses or out-of-memory errors:** Try a smaller Ollama model and set `MODEL` to its exact tag.
+- To run stream_tools_test.py, cd to AI-System folder, run  
+
+```zsh
+PYTHONPATH=. python Code-modular-testing/stream_tools_test.py  
+```

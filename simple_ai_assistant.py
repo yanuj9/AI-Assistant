@@ -14,7 +14,16 @@ from tools import TOOLS, run_tool
 Whatever we provide to the model is a Hint not a guarantee.
 Small models may still ignore instructions.
 So make it a habit to not rely on model totally. (graceful Exception handling)
+"""
 
+
+
+"""
+Streaming : Improving the time to see the first word (seems fast to user)
+
+First word appears in 1 - 2 seconds (TTFT : Time to First Token)
+Vs
+10 seconds to see full response 
 """
 
 load_dotenv() # by default looks for .env file and loads all of these in environment variables
